@@ -738,6 +738,33 @@
         top: 210px;
       }
     }
+
+    /* Hide debug windows when embedded (e.g., in fixed-size iframe/mini app) */
+    body.embedded .system-window,
+    body.embedded .missing-messages-window {
+      display: none !important;
+    }
+
+    /* Loading indicator inside chat container */
+    .loading-indicator {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #00ff00;
+      opacity: 0.85;
+      font-size: 12px;
+      text-shadow: 0 0 6px rgba(0,255,0,0.35);
+      animation: loadingPulse 1.4s ease-in-out infinite;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    @keyframes loadingPulse {
+      0% { opacity: 0.5; }
+      50% { opacity: 1; }
+      100% { opacity: 0.5; }
+    }
   </style>
 </head>
 <body>
@@ -833,6 +860,9 @@
       this.initProtobuf();
       this.initElements();
       this.initEventListeners();
+      this.applyEmbeddedStyling();
+      this.updateLayoutOffsets();
+      window.addEventListener('resize', () => this.updateLayoutOffsets());
       this.initWaku();
     }
 
@@ -905,6 +935,39 @@
 
       // Set the generated nickname in the input field
       this.nicknameInput.value = this.nickname;
+
+      // Add loading indicator until first message appears
+      this.loadingIndicator = document.createElement('div');
+      this.loadingIndicator.className = 'loading-indicator';
+      this.loadingIndicator.textContent = 'Loading messages…';
+      this.chatContainer.appendChild(this.loadingIndicator);
+    }
+
+    applyEmbeddedStyling() {
+      try {
+        const isEmbedded = window.self !== window.top;
+        if (isEmbedded) {
+          document.body.classList.add('embedded');
+        }
+      } catch (_) {
+        // Cross-origin frame access throws; assume embedded
+        document.body.classList.add('embedded');
+      }
+    }
+
+    updateLayoutOffsets() {
+      // Ensure chat messages are never covered by the fixed input bar
+      const input = document.querySelector('.input-container');
+      if (!input) return;
+      const inputHeight = input.getBoundingClientRect().height || 80;
+
+      if (this.chatContainer) {
+        this.chatContainer.style.paddingBottom = `${Math.ceil(inputHeight) + 10}px`;
+      }
+
+      if (this.replyIndicator) {
+        this.replyIndicator.style.bottom = `${Math.ceil(inputHeight)}px`;
+      }
     }
 
     initEventListeners() {
@@ -1591,6 +1654,7 @@
     }
 
     addChatMessage(message) {
+      this.hideLoadingIndicator();
       const messageElement = document.createElement('div');
       const isLocalMessage = message.sender === this.nickname;
       messageElement.className = isLocalMessage ? 'message local-message' : 'message';
@@ -1655,6 +1719,7 @@
     }
 
     addChatMessageWithStatus(message) {
+      this.hideLoadingIndicator();
       const messageElement = document.createElement('div');
       messageElement.className = 'message local-message';
       messageElement.dataset.messageId = message.messageId;
@@ -1760,6 +1825,13 @@
       const messages = this.systemContent.querySelectorAll('.system-window-message');
       if (messages.length > 50) {
         messages[0].remove();
+      }
+    }
+
+    hideLoadingIndicator() {
+      if (this.loadingIndicator && this.loadingIndicator.parentNode) {
+        this.loadingIndicator.parentNode.removeChild(this.loadingIndicator);
+        this.loadingIndicator = null;
       }
     }
 
@@ -1920,6 +1992,19 @@
   window.addEventListener('DOMContentLoaded', () => {
     new RetroIRC();
   });
+</script>
+<script type="module">
+  import { sdk } from 'https://esm.sh/@farcaster/miniapp-sdk';
+
+  (async () => {
+    try {
+      if (await sdk.isInMiniApp()) {
+        await sdk.actions.ready();
+      }
+    } catch (e) {
+      // no-op
+    }
+  })();
 </script>
 </body>
 </html>
